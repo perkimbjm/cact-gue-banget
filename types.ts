@@ -33,3 +33,9 @@ export interface AnalysisResult {
     summary: string;
   };
 }
+
+export interface CharacterMatch {
+  name: string;
+  origin: string;
+  justification: string;
+}
