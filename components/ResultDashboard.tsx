@@ -371,6 +371,14 @@ export const ResultDashboard = ({ user, result }: ResultDashboardProps) => {
     { id: "Personal Weaknesses", label: "Kelemahan Pribadi" }
   ];
 
+  const competencyLabels: Record<string, string> = {
+    communication: "Komunikasi",
+    managingChange: "Mengelola Perubahan",
+    resultOrientation: "Orientasi Hasil",
+    publicService: "Pelayanan Publik",
+    decisionMaking: "Pengambilan Keputusan"
+  };
+
   return (
     <div className="max-w-4xl mx-auto p-4 animate-fade-in pb-20 relative">
       
@@ -554,11 +562,29 @@ export const ResultDashboard = ({ user, result }: ResultDashboardProps) => {
 
       <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 md:p-8 shadow-lg min-h-[300px]">
         {activeTab === 'profile' && (
-          <div className="prose dark:prose-invert max-w-none">
-            <h3 className="font-display text-2xl mb-4 text-purple-600 dark:text-purple-300">Synthesis Profile</h3>
-            <p className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 leading-relaxed">
-              {result.finalProfile.synthesis}
-            </p>
+          <div className="space-y-8 animate-fade-in">
+            <div className="prose dark:prose-invert max-w-none">
+                <h3 className="font-display text-2xl mb-4 text-purple-600 dark:text-purple-300">Synthesis Profile</h3>
+                <p className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 leading-relaxed">
+                {result.finalProfile.synthesis}
+                </p>
+            </div>
+
+            <div className="bg-gray-50 dark:bg-gray-700 p-6 rounded-2xl">
+                <h3 className="font-display text-xl mb-6 text-gray-800 dark:text-white border-b pb-2 dark:border-gray-600">Work Competencies</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {result.finalProfile.competencies && Object.entries(result.finalProfile.competencies).map(([key, value]) => (
+                        <div key={key} className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+                            <h4 className="font-bold text-purple-600 dark:text-purple-300 text-sm uppercase mb-2">
+                                {competencyLabels[key] || key}
+                            </h4>
+                            <p className="text-gray-800 dark:text-gray-200 font-medium">
+                                {value}
+                            </p>
+                        </div>
+                    ))}
+                </div>
+            </div>
           </div>
         )}
 

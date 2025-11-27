@@ -11,7 +11,7 @@ import { ProgressBar } from "./components/ProgressBar";
 const LoadingAnalysis = () => (
   <div className="flex flex-col items-center justify-center min-h-[50vh] text-center p-8 animate-fade-in">
     <h2 className="text-2xl font-display font-bold text-gray-800 dark:text-white mb-4">Menganalisa Jiwa...</h2>
-    <ProgressBar label="Menghubungkan MBTI, Temperament, HEXACO, dan HSP..." />
+    <ProgressBar label="Menghubungkan MBTI, Temperament, dan Analisa Kompetensi..." />
   </div>
 );
 
@@ -64,7 +64,7 @@ export const App = () => {
       const qnaList = QUESTIONS.map(q => `Q: ${q.text} [Category: ${q.category}]\nA: ${ans[q.id]}`).join("\n");
       
       const prompt = `
-        Act as an expert psychologist. Analyze these user answers to a personality test.
+        Act as an expert psychologist. Analyze these user answers to a personality test (including multiple case studies).
         User: ${u.age} y.o ${u.gender}, ${u.occupation} (${u.generation}).
         
         Input Data:
@@ -76,8 +76,8 @@ export const App = () => {
         3. Analyze HEXACO (brief summary of dominant traits).
         4. Analyze HSP (High/Medium/Low and why).
         5. Synthesize all 4 systems into a "Final Profile".
-        6. Identify exactly 4 Key Traits (adjectives) that best describe this person (e.g., Visioner, Santuy, Kritis, Setia).
-        7. Create a narrative description based on Generation TONE rules below.
+        6. Identify exactly 4 Key Traits (adjectives).
+        7. Analyze specific Work Competencies based on the Case Studies provided (Communication, Managing Change, Result Orientation, Public Service, Decision Making). Provide a score (Low/Medium/High) and a very short reasoning (1 sentence).
 
         TONE & HUMOR RULES:
         - Gen X: Tone is Formal-Casual, Polite (Sopan), Wise, Structured. Avoid slang. Use "Anda/Saya". 
@@ -95,7 +95,14 @@ export const App = () => {
             "hexacoSummary": "Short phrase",
             "hspLevel": "High/Med/Low",
             "synthesis": "One paragraph combining all traits. Use simple, easy-to-understand Indonesian language suitable for laypeople. Avoid complex jargon.",
-            "keyTraits": ["Trait1", "Trait2", "Trait3", "Trait4"]
+            "keyTraits": ["Trait1", "Trait2", "Trait3", "Trait4"],
+            "competencies": {
+               "communication": "Score (Reason)",
+               "managingChange": "Score (Reason)",
+               "resultOrientation": "Score (Reason)",
+               "publicService": "Score (Reason)",
+               "decisionMaking": "Score (Reason)"
+            }
           },
           "narrative": {
             "tone": "${u.generation} style",

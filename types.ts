@@ -26,6 +26,13 @@ export interface AnalysisResult {
     hspLevel: string;
     synthesis: string;
     keyTraits: string[];
+    competencies: {
+      communication: string;
+      managingChange: string;
+      resultOrientation: string;
+      publicService: string;
+      decisionMaking: string;
+    };
   };
   narrative: {
     tone: string;
