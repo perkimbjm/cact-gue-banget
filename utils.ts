@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export const getGenAI = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("API Key not found");
+  const apiKey = import.meta.env.VITE_GEMINI_TOKEN;
+  if (!apiKey) throw new Error("VITE_GEMINI_TOKEN not found in .env file");
   return new GoogleGenAI({ apiKey });
 };
