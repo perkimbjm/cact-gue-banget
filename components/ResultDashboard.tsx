@@ -27,6 +27,11 @@ export const ResultDashboard = ({ user, result }: ResultDashboardProps) => {
   const [recType, setRecType] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
+  // New States for Cosplay Feature
+  const [visualModalOpen, setVisualModalOpen] = useState(false);
+  const [selectedCharForVisual, setSelectedCharForVisual] = useState<CharacterMatch | null>(null);
+  const [userSelfie, setUserSelfie] = useState<string | null>(null);
+
   const getStylePrompt = (origin: string) => {
     const o = origin.toLowerCase();
     if (o.includes('naruto') || o.includes('one piece') || o.includes('anime')) return "Japanese Anime art style, vibrant, cel-shaded, high quality 2D animation style";
@@ -38,19 +43,79 @@ export const ResultDashboard = ({ user, result }: ResultDashboardProps) => {
     return "High quality digital illustration, character concept art";
   };
 
-  const generateVisual = async (char: CharacterMatch) => {
+  const handleVisualClick = (char: CharacterMatch) => {
+    setSelectedCharForVisual(char);
+    setUserSelfie(null); // Reset previous upload
+    setVisualModalOpen(true);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setUserSelfie(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const generateVisual = async (withSelfie: boolean) => {
+    if (!selectedCharForVisual) return;
+    
+    const char = selectedCharForVisual;
+    setVisualModalOpen(false); // Close modal
     setLoadingCharImg(char.name);
+
     try {
         const ai = getGenAI();
         const style = getStylePrompt(char.origin);
-        const prompt = `Generate a visual of the fictional character "${char.name}" from "${char.origin}". 
-        Style: ${style}. 
-        Composition: Solo portrait or dynamic pose, suitable for a trading card.
-        Do not include text in the image itself.`;
+        
+        let contents;
+
+        if (withSelfie && userSelfie) {
+            // Multimodal Request (Image + Text)
+            // Strip the data:image/jpeg;base64, prefix
+            const base64Data = userSelfie.split(',')[1];
+            const mimeType = userSelfie.split(';')[0].split(':')[1];
+
+            let genderConstraint = "";
+            if (user.gender === "Female") {
+                genderConstraint = `
+                5. CRITICAL REQUIREMENT: The subject is a Muslim woman. The generated image MUST feature the character wearing a stylish hijab/headscarf that covers the hair AND extends down to cover the chest (hijab menutup dada/syari compliant).
+                6. Modify the character's costume to be modest (long sleeves, loose fitting, no exposed skin other than face and hands) while strictly maintaining the iconic color palette and accessories of "${char.name}".
+                `;
+            }
+
+            const prompt = `
+            Transform the person in this image into the character "${char.name}" from "${char.origin}".
+            Task: Create a "Cosplay" version.
+            1. Keep the facial features and expression of the person in the uploaded image recognizable.
+            2. Apply the costume and accessories of "${char.name}".
+            3. Style: ultra-realistic photography, real human cosplay, no anime, no illustration.
+            4. High quality, detailed, poster layout.
+            ${genderConstraint}
+            `;
+
+            contents = {
+                parts: [
+                    { inlineData: { mimeType, data: base64Data } },
+                    { text: prompt }
+                ]
+            };
+        } else {
+            // Text-only Request
+            const prompt = `Generate a visual of the fictional character "${char.name}" from "${char.origin}". 
+            Style: ${style}. 
+            Composition: Solo portrait or dynamic pose, suitable for a trading card.
+            Do not include text in the image itself.`;
+            
+            contents = { parts: [{ text: prompt }] };
+        }
         
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
-            contents: { parts: [{ text: prompt }] }
+            contents: contents
         });
 
         const parts = response.candidates?.[0]?.content?.parts;
@@ -68,6 +133,7 @@ export const ResultDashboard = ({ user, result }: ResultDashboardProps) => {
         alert("Gagal membuat gambar karakter. Silakan coba lagi.");
     } finally {
         setLoadingCharImg(null);
+        setSelectedCharForVisual(null);
     }
   };
 
@@ -114,12 +180,12 @@ export const ResultDashboard = ({ user, result }: ResultDashboardProps) => {
         
         Task: Match fictional characters based on these RULES:
         
-        IF GEN X (Male): 90s RCTI Western/HK films, Avengers/DC.
-        IF GEN X (Female): 90s RCTI Western dramas, 2000s Indo soap operas, K-Drama.
-        IF GEN Y (Male): Naruto, One Piece, 2000s Sunday Cartoons, Kamen Rider.
-        IF GEN Y (Female): Naruto, 2000s Sunday Cartoons RCTI Indonesia, K-Drama.
-        IF GEN Z (Male): Naruto, One Piece, Mobile Legends.
-        IF GEN Z (Female): Naruto, K-Drama, Female Cartoons (Barbie/Anime/BoBoiBoy/Upin-Ipin).
+        IF GEN X (Male): Male 90s RCTI Western/HK films, Male Avengers/DC.
+        IF GEN X (Female): Female 90s RCTI Western dramas, Female 2000s Indo soap operas, Female K-Drama.
+        IF GEN Y (Male): Male Naruto, Male One Piece, Male 2000s Sunday Cartoons, Male Kamen Rider.
+        IF GEN Y (Female): Female Char Naruto, Female 2000s Sunday Cartoons RCTI Indonesia, Female K-Drama.
+        IF GEN Z (Male): Male Char Naruto, Male One Piece, Male Mobile Legends.
+        IF GEN Z (Female): Female Char Naruto, Female K-Drama, Female Cartoons (Barbie/Anime/BoBoiBoy/Upin-Ipin).
 
         Provide 3 matches. 
         
@@ -148,6 +214,85 @@ export const ResultDashboard = ({ user, result }: ResultDashboardProps) => {
     } finally {
       setLoadingAI(false);
     }
+  };
+
+  // Helper to burn overlay into image for download/share
+  const processImageWithOverlay = (base64Image: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.src = base64Image;
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return reject("Canvas error");
+
+            canvas.width = img.width;
+            canvas.height = img.height;
+
+            // Draw Image
+            ctx.drawImage(img, 0, 0);
+
+            // Draw Gradient
+            const gradient = ctx.createLinearGradient(0, canvas.height * 0.6, 0, canvas.height);
+            gradient.addColorStop(0, "transparent");
+            gradient.addColorStop(1, "rgba(0,0,0,0.9)");
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, canvas.height * 0.6, canvas.width, canvas.height * 0.4);
+
+            // Draw MBTI Text
+            const fontSizeMbti = canvas.width * 0.1; // 10% of width
+            ctx.font = `bold ${fontSizeMbti}px 'Verdana', sans-serif`;
+            ctx.fillStyle = "white";
+            ctx.textAlign = "center";
+            ctx.shadowColor = "black";
+            ctx.shadowBlur = 10;
+            ctx.fillText(result.mbti, canvas.width / 2, canvas.height - (canvas.height * 0.15));
+
+            // Draw Traits Text
+            const fontSizeTraits = canvas.width * 0.04; // 4% of width
+            ctx.font = `${fontSizeTraits}px 'Verdana', sans-serif`;
+            const traitsText = result.finalProfile.keyTraits.slice(0, 4).join(" • ");
+            ctx.fillText(traitsText, canvas.width / 2, canvas.height - (canvas.height * 0.08));
+
+            resolve(canvas.toDataURL('image/jpeg', 0.9));
+        };
+        img.onerror = (e) => reject(e);
+    });
+  };
+
+  const downloadSingleImage = async (charName: string, base64: string) => {
+      try {
+        const processedImage = await processImageWithOverlay(base64);
+        const link = document.createElement('a');
+        link.download = `CACT-${charName}-Cosplay.jpg`;
+        link.href = processedImage;
+        link.click();
+      } catch (e) {
+        console.error("Error processing image", e);
+        alert("Gagal memproses gambar.");
+      }
+  };
+
+  const shareSingleImage = async (charName: string, base64: string) => {
+      try {
+          const processedImage = await processImageWithOverlay(base64);
+          const res = await fetch(processedImage);
+          const blob = await res.blob();
+          const file = new File([blob], `CACT-${charName}.jpg`, { type: 'image/jpeg' });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+               await navigator.share({
+                  title: `My ${charName} Cosplay`,
+                  text: `Cek cosplay ${charName} versi gue di CACT Gue Banget!`,
+                  files: [file]
+              });
+          } else {
+              downloadSingleImage(charName, base64);
+          }
+      } catch (e) {
+          console.error("Share failed", e);
+          alert("Gagal share gambar.");
+      }
   };
 
   const handleDownload = async () => {
@@ -229,6 +374,51 @@ export const ResultDashboard = ({ user, result }: ResultDashboardProps) => {
   return (
     <div className="max-w-4xl mx-auto p-4 animate-fade-in pb-20 relative">
       
+      {/* Visual Upload Modal */}
+      {visualModalOpen && selectedCharForVisual && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-sm w-full p-6 text-center animate-fade-in">
+                <h3 className="text-xl font-bold font-display text-gray-800 dark:text-white mb-4">
+                   Cosplay jadi {selectedCharForVisual.name}?
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
+                    Upload fotomu (selfie close-up terbaik) agar AI bisa membuatmu "cosplay" menjadi karakter ini. Atau skip untuk generate versi original.
+                </p>
+
+                <div className="mb-6">
+                    <label className="block w-full p-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                        <span className="text-gray-500 dark:text-gray-400 text-sm font-bold">
+                            {userSelfie ? "✅ Foto Terpilih (Ganti?)" : "📂 Pilih Foto Selfie"}
+                        </span>
+                        <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+                    </label>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                    <button 
+                        onClick={() => generateVisual(true)}
+                        disabled={!userSelfie}
+                        className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        ✨ Generate Cosplay Wajahku
+                    </button>
+                    <button 
+                        onClick={() => generateVisual(false)}
+                        className="w-full py-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-xl font-bold"
+                    >
+                        Skip & Generate Original
+                    </button>
+                    <button 
+                        onClick={() => setVisualModalOpen(false)}
+                        className="text-xs text-gray-400 hover:text-gray-600 mt-2"
+                    >
+                        Batal
+                    </button>
+                </div>
+            </div>
+         </div>
+      )}
+
       {/* Preview Modal */}
       {showPreview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto">
@@ -246,12 +436,11 @@ export const ResultDashboard = ({ user, result }: ResultDashboardProps) => {
                 ref={cardRef} 
                 className="w-[600px] bg-gradient-to-br from-pastel-blue via-white to-pastel-pink p-6 flex flex-col items-center text-center relative shadow-2xl shrink-0"
               >
-                <div className="w-full border-b-2 border-purple-200 pb-4 mb-4">
-                  <h2 className="text-3xl font-display font-bold text-purple-600 tracking-wider">CACT Gue Banget</h2>
-                  <p className="text-sm text-purple-400 font-bold uppercase tracking-widest mt-1">Personality Profile</p>
+                <div className="w-full border-b-2 border-purple-200 pb-2 mb-2">
+                  <h2 className="text-2xl font-display font-bold text-purple-600 tracking-wider">CACT Gue Banget</h2>
                 </div>
 
-                <div className="flex-1 w-full space-y-4">
+                <div className="flex-1 w-full space-y-2">
                   <div>
                     <h1 className="text-4xl font-display font-bold text-gray-800 leading-tight">{user.nickname}</h1>
                   </div>
@@ -268,10 +457,10 @@ export const ResultDashboard = ({ user, result }: ResultDashboardProps) => {
                   </div>
 
                   <div className="w-full px-4">
-                    <p className="text-gray-500 font-bold uppercase tracking-widest text-[10px] mb-2">My Top Traits</p>
+                    <p className="text-gray-500 font-bold uppercase tracking-widest text-[10px] mb-2">Karakter Gue Banget</p>
                     <div className="grid grid-cols-2 gap-2">
                       {result.finalProfile.keyTraits?.slice(0, 4).map((trait, i) => (
-                          <div key={i} className="bg-purple-600/90 text-white py-1 px-2 rounded-lg font-bold text-sm shadow-sm">
+                          <div key={i} className="bg-purple-600/90 text-white py-1 px-2 rounded-lg font-bold text-sm shadow-sm flex justify-center items-center text-center">
                             {trait}
                           </div>
                       ))}
@@ -281,10 +470,6 @@ export const ResultDashboard = ({ user, result }: ResultDashboardProps) => {
                   <div className="bg-white/60 p-4 rounded-xl mx-4">
                     <p className="text-gray-700 text-xs font-medium italic">"{result.narrative.summary}"</p>
                   </div>
-                </div>
-
-                <div className="w-full pt-4 mt-4 border-t border-purple-200">
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Analyzed by CACT AI • cact-gue-banget.app</p>
                 </div>
               </div>
             </div>
@@ -440,22 +625,49 @@ export const ResultDashboard = ({ user, result }: ResultDashboardProps) => {
                             <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">{char.origin}</span>
                             <p className="text-sm text-gray-700 dark:text-gray-300 flex-1 mb-6 leading-relaxed">"{char.justification}"</p>
                             
-                            {charImages[char.name] ? (
-                                <div className="mt-4 relative rounded-xl overflow-hidden border-2 border-purple-300 shadow-md group-hover:shadow-xl transition-all">
+                            {loadingCharImg === char.name ? (
+                                <div className="mt-4 py-4">
+                                    <ProgressBar label="Sedang menyulap..." />
+                                </div>
+                            ) : charImages[char.name] ? (
+                                <div className="mt-4 relative rounded-xl overflow-hidden border-2 border-purple-300 shadow-md group-hover:shadow-xl transition-all group/image">
                                     <img src={charImages[char.name]} alt={char.name} className="w-full h-auto object-cover" />
-                                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3 pt-8">
-                                        <p className="text-white font-bold text-center text-sm shadow-black drop-shadow-md">
-                                            {result.mbti} Character
+                                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-4 pt-10 pointer-events-none">
+                                        <p className="text-white font-bold text-center text-sm shadow-black drop-shadow-md uppercase tracking-wider mb-1">
+                                            {result.mbti}
                                         </p>
+                                        <div className="flex flex-wrap justify-center gap-1">
+                                            {result.finalProfile.keyTraits.map((t, i) => (
+                                                <span key={i} className="text-[10px] text-white/90 bg-white/20 px-1.5 py-0.5 rounded-full backdrop-blur-sm">
+                                                    {t}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    {/* Action Buttons for Image */}
+                                    <div className="absolute top-2 right-2 flex gap-2">
+                                        <button 
+                                            onClick={() => downloadSingleImage(char.name, charImages[char.name])}
+                                            className="bg-white/90 hover:bg-white text-gray-800 p-2 rounded-full shadow-lg backdrop-blur-sm transition-transform hover:scale-110"
+                                            title="Download Image"
+                                        >
+                                            📥
+                                        </button>
+                                         <button 
+                                            onClick={() => shareSingleImage(char.name, charImages[char.name])}
+                                            className="bg-white/90 hover:bg-white text-blue-600 p-2 rounded-full shadow-lg backdrop-blur-sm transition-transform hover:scale-110"
+                                            title="Share Image"
+                                        >
+                                            🔗
+                                        </button>
                                     </div>
                                 </div>
                             ) : (
                                 <button 
-                                    onClick={() => generateVisual(char)}
-                                    disabled={loadingCharImg === char.name}
-                                    className="w-full py-2 bg-white dark:bg-gray-800 border-2 border-purple-400 text-purple-600 dark:text-purple-300 hover:bg-purple-500 hover:text-white dark:hover:bg-purple-600 dark:hover:border-purple-600 rounded-xl font-bold text-sm transition-all disabled:opacity-50"
+                                    onClick={() => handleVisualClick(char)}
+                                    className="w-full py-2 bg-white dark:bg-gray-800 border-2 border-purple-400 text-purple-600 dark:text-purple-300 hover:bg-purple-500 hover:text-white dark:hover:bg-purple-600 dark:hover:border-purple-600 rounded-xl font-bold text-sm transition-all"
                                 >
-                                    {loadingCharImg === char.name ? "Melukis..." : "🎨 Visualisasikan"}
+                                    🎨 Visualisasikan
                                 </button>
                             )}
                         </div>

@@ -1,5 +1,4 @@
-
-import { clsx, type ClassValue } from "clsx";
+import clsx, { type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { GoogleGenAI } from "@google/genai";
 
